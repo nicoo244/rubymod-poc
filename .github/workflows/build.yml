@@ -2,6 +2,9 @@ name: Build
 
 on: [push, pull_request]
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -21,10 +24,29 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Build with Gradle
-        run: ./gradlew build
+      - name: Build with Gradle (capturando log siempre)
+        id: build
+        run: |
+          set +e
+          ./gradlew build --stacktrace > build_output.log 2>&1
+          echo "status=$?" >> "$GITHUB_OUTPUT"
+          set -e
+
+      - name: Guardar log de build en el repo
+        if: always()
+        run: |
+          git config user.name "nodemc-ci"
+          git config user.email "nodemc-ci@users.noreply.github.com"
+          git add build_output.log
+          git commit -m "CI: log de build (exit=${{ steps.build.outputs.status }})" || echo "sin cambios que commitear"
+          git push
+
+      - name: Fallar el job si la build fallo
+        if: steps.build.outputs.status != '0'
+        run: exit 1
 
       - name: Upload built mod jar
+        if: steps.build.outputs.status == '0'
         uses: actions/upload-artifact@v4
         with:
           name: mod-jar
